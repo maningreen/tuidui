@@ -1,9 +1,8 @@
 {
-  nixpkgs ? import <nixpkgs> {},
+  pkgs ? import <nixpkgs> {},
   compiler ? "default",
   doBenchmark ? false,
 }: let
-  inherit (nixpkgs) pkgs;
 
   f = {
     mkDerivation,
