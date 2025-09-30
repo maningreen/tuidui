@@ -5,7 +5,6 @@ import Brick.Widgets.Border (border, borderWithLabel)
 import Brick.Widgets.Center (center, centerLayer, hCenter)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Map as Map
-import Data.Maybe (isJust)
 import GHC.IO.Handle (hGetContents, hPutStr)
 import GHC.IO.Handle.FD (openFile, withFile)
 import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
@@ -126,16 +125,16 @@ app =
  where
   handleEvent :: BrickEvent WidgetID () -> EventM WidgetID State ()
   handleEvent (VtyEvent (EvKey k [])) = do
-    x <- get
-    case (_state x, k) of
+    st <- get
+    case (_state st, k) of
       (Insert, c)
-        | KBS <- c -> manageInsert c x
-        | KEnter <- c -> manageInsert c x
-        | KChar _ <- c -> manageInsert c x
+        | KBS <- c -> manageInsert c st
+        | KEnter <- c -> manageInsert c st
+        | KChar _ <- c -> manageInsert c st
       (state, c)
-        | isJust spec -> mapM_ (get >>=) spec
-        | isJust gen -> mapM_ (get >>=) gen
-        | (KChar i) <- c -> setStateMode (Following i) x
+        | (Just f) <- spec -> f st
+        | (Just f) <- gen -> f st
+        | (KChar i) <- c -> setStateMode (Following i) st
         | otherwise -> return ()
        where
         spec = Map.lookup (k, state) inputs
