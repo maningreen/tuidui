@@ -2,14 +2,14 @@ module Main where
 
 import Brick
 import Brick.Widgets.Border (border, borderWithLabel)
-import Brick.Widgets.Center
+import Brick.Widgets.Center (center, centerLayer, hCenter)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Map as Map
 import Data.Maybe (isJust)
 import GHC.IO.Handle (hGetContents, hPutStr)
 import GHC.IO.Handle.FD (openFile, withFile)
 import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
-import Graphics.Vty
+import Graphics.Vty (Event (EvKey), Key (..), black, defAttr, white)
 
 type WidgetID = Int
 data Modes = Normal | Insert | Help | Any
