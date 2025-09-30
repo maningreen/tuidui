@@ -12,8 +12,8 @@ import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
 import Graphics.Vty (Event (EvKey), Key (..), black, defAttr, white)
 
 type WidgetID = Int
-data Modes = Normal | Insert | Help | Any
-  deriving (Ord, Eq, Bounded, Enum, Show)
+data Modes = Normal | Insert | Help | Following Char | Any
+  deriving (Ord, Eq, Show)
 data Data = Data {_items :: String, _index :: WidgetID}
 data State = State {_state :: Modes, _data :: Data}
 
@@ -25,7 +25,7 @@ helpStrs =
   [ "Mode Commands: Effect"
   , "Any Esc:                         exit mode (If Normal mode exits program)"
   , "Normal/Help q:                   exit mode ^"
-  , "Normal g:                        focus top"
+  , "Normal gg:                       focus top"
   , "Normal G:                        focus bottom"
   , "Normal j, Down:                  focus down"
   , "Normal k, Up:                    focus up"
@@ -39,10 +39,11 @@ inputs :: Map.Map (Key, Modes) (State -> EventM WidgetID State ())
 inputs =
   Map.fromList
     [ ((KChar 'q', Normal), exitMode)
+    , ((KBS, Any), exitMode)
     , ((KChar 'q', Help), exitMode)
     , ((KEsc, Any), exitMode)
-    , ((KChar 'g', Normal), bottom)
-    , ((KChar 'G', Normal), top)
+    , ((KChar 'g', Following 'g'), top)
+    , ((KChar 'G', Normal), bottom)
     , ((KChar 'j', Normal), move 1)
     , ((KChar 'k', Normal), move (-1))
     , ((KChar 'n', Normal), add)
@@ -51,7 +52,9 @@ inputs =
     , ((KChar 'd', Normal), remove)
     , ((KChar 'r', Normal), remove)
     , ((KChar 'h', Normal), help)
+    , ((KChar 'h', Help), help)
     , ((KChar '?', Normal), help)
+    , ((KChar '?', Help), help)
     ]
 clampI :: [a] -> Int -> Int
 clampI a b
@@ -71,7 +74,7 @@ bottom :: State -> EventM WidgetID State ()
 bottom (State s (Data items _)) = modify . const . State s . Data items $ length (lines items) - 1
 
 top :: State -> EventM WidgetID State ()
-top (State s (Data items _)) = modify . const . State s . Data items $ 0
+top (State _ (Data items _)) = modify . const . State Normal . Data items $ 0
 
 remove :: State -> EventM WidgetID State ()
 remove (State s (Data items index)) = modify . const . State s . Data (unlines lose) $ clampI lose index
@@ -80,7 +83,8 @@ remove (State s (Data items index)) = modify . const . State s . Data (unlines l
   lose = take index lns ++ drop (index + 1) lns
 
 help :: State -> EventM WidgetID State ()
-help = setStateMode Help
+help s@(State Help _) = setStateMode Normal s
+help s@(State _ _) = setStateMode Help s
 
 add :: State -> EventM WidgetID State ()
 add (State Normal (Data items index)) = modify . const . State Insert $ Data items index
@@ -128,27 +132,34 @@ app =
         | KBS <- c -> manageInsert c x
         | KEnter <- c -> manageInsert c x
         | KChar _ <- c -> manageInsert c x
-      (state, _)
+      (state, c)
         | isJust spec -> mapM_ (get >>=) spec
-        | otherwise -> mapM_ (get >>=) gen
+        | isJust gen -> mapM_ (get >>=) gen
+        | (KChar i) <- c -> setStateMode (Following i) x
+        | otherwise -> return ()
        where
         spec = Map.lookup (k, state) inputs
         gen = Map.lookup (k, Any) inputs
   handleEvent _ = return ()
 
   drawBorder = borderWithLabel (str "Todo items")
-  draw :: State -> [Widget WidgetID]
+  drawContents :: State -> [Widget WidgetID]
 
-  draw (State Normal (Data c i))
-    | null $ lines c = return . drawBorder . center $ str "No Items! (For help type ?)"
+  drawState :: Modes -> Widget WidgetID
+  drawState = str . show
+
+  draw s@(State n _) = drawState n : drawContents s
+
+  drawContents (State Normal (Data c i))
+    | null $ lines c = return $ drawBorder . center $ str "No Items! (For help type ?)"
     | otherwise = return . drawBorder . center $ v
    where
     lns = map (hCenter . str) $ lines c
     wid = vBox $ [if b == i then visible $ withAttr (attrName "selected") a else a | (a, b) <- zip lns [0 ..]]
     v = viewport (-1) Vertical wid
-  draw (State Help x) = (centerLayer . border . vBox $ map str helpStrs) : draw (State Normal x)
-  draw (State Insert (Data items _)) = draw . State Normal . Data (items ++ "█") $ -1
-  draw (State s _) = return . str $ "No rendering for state: " ++ show s
+  drawContents (State Help x) = (centerLayer . border . vBox $ map str helpStrs) : drawContents (State Normal x)
+  drawContents (State Insert (Data items _)) = drawContents . State Normal . Data (items ++ "█") $ -1
+  drawContents (State _ d) = drawContents $ State Normal d
 
 startApp :: IO State
 startApp = do
