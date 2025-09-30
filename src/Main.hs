@@ -101,6 +101,7 @@ closeApp :: String -> IO ()
 closeApp s = withFile todoPath WriteMode (`hPutStr` s)
 
 exitMode :: State -> EventM WidgetID State ()
+exitMode s@(State Insert _) = manageInsert KEnter s
 exitMode (State Normal (Data s _)) = liftIO (closeApp s) >> halt
 exitMode x = setStateMode Normal x
 
