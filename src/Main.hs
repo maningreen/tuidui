@@ -46,39 +46,37 @@ inputs =
       ((KChar 'x', Normal), remove), ((KChar 'd', Normal), remove), ((KChar 'r', Normal), remove),
       ((KChar 'h', Normal), help), ((KChar '?', Normal), help)
     ]
-    where
-      clampI :: [a] -> Int -> Int
-      clampI a b
-        | b < 0 = 0
-        | b > l = l
-        | otherwise = b
-        where l = length a - 1
+clampI :: [a] -> Int -> Int
+clampI a b
+  | b < 0 = 0
+  | b > l = l
+  | otherwise = b
+  where l = length a - 1
 
-      move :: Int -> State -> EventM WidgetID State ()
-      move i (State Normal (Data items index))
-        | index + i >= (length . lines) items || index + i < 0 = return ()
-        | otherwise = modify . const . State Normal $ Data items (index + i)
-      move _ (State _ _) = return ()
+move :: Int -> State -> EventM WidgetID State ()
+move i (State Normal (Data items index))
+  | index + i >= (length . lines) items || index + i < 0 = return ()
+  | otherwise = modify . const . State Normal $ Data items (index + i)
+move _ (State _ _) = return ()
 
-      bottom :: State -> EventM WidgetID State ()
-      bottom (State s (Data items _)) = modify . const . State s . Data items $ length (lines items) - 1
+bottom :: State -> EventM WidgetID State ()
+bottom (State s (Data items _)) = modify . const . State s . Data items $ length (lines items) - 1
 
-      top :: State -> EventM WidgetID State ()
-      top (State s (Data items _)) = modify . const . State s . Data items $ 0
+top :: State -> EventM WidgetID State ()
+top (State s (Data items _)) = modify . const . State s . Data items $ 0
 
-      remove :: State -> EventM WidgetID State ()
-      remove (State s (Data items index)) = modify . const . State s . Data (unlines lose) $ clampI lose index
-        where 
-          lns = lines items
-          lose = take index lns ++ drop (index + 1) lns
+remove :: State -> EventM WidgetID State ()
+remove (State s (Data items index)) = modify . const . State s . Data (unlines lose) $ clampI lose index
+  where 
+    lns = lines items
+    lose = take index lns ++ drop (index + 1) lns
 
-      help :: State -> EventM WidgetID State ()
-      help = setStateMode Help
+help :: State -> EventM WidgetID State ()
+help = setStateMode Help
 
-
-      add :: State -> EventM WidgetID State ()
-      add (State Normal (Data items index)) = modify . const . State Insert $ Data items index
-      add _ = return ()
+add :: State -> EventM WidgetID State ()
+add (State Normal (Data items index)) = modify . const . State Insert $ Data items index
+add _ = return ()
 
 setStateMode :: Modes -> State -> EventM WidgetID State ()
 setStateMode m (State _ d) = modify . const $ State m d
@@ -87,7 +85,7 @@ manageInsert :: Key -> State -> EventM WidgetID State ()
 manageInsert KBS (State _ (Data s i)) 
   | [_] <- last (lines s) = modify . const $ State Normal (Data (init s) i)
   | otherwise = modify . const $ State Insert (Data (init s) i)
-manageInsert KEnter (State _ (Data s i)) = modify . const $ State Normal (Data (s ++ "\n") i)
+manageInsert KEnter (State _ (Data s i)) = bottom $ State Normal (Data (s ++ "\n") i) 
 manageInsert (KChar c) (State _ (Data s i)) = modify . const $ State Insert (Data (s ++ [c]) i)
 manageInsert _ _ = return ()
 
