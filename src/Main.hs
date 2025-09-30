@@ -25,6 +25,8 @@ helpStrs = [
     "Mode Commands: Effect",
     "Any Esc:                         exit mode (If Normal mode exits program)",
     "Normal/Help q:                   exit mode ^",
+    "Normal g:                        focus top",
+    "Normal G:                        focus bottom",
     "Normal j, Down:                  focus down",
     "Normal k, Up:                    focus up",
     "Normal n, i, a:                  add new item",
@@ -37,6 +39,7 @@ inputs :: Map.Map (Key, Modes) (State -> EventM WidgetID State ())
 inputs =
   Map.fromList
     [ ((KChar 'q', Normal), exitMode), ((KChar 'q', Help), exitMode), ((KEsc, Any), exitMode),
+      ((KChar 'g', Normal), bottom), ((KChar 'G', Normal), top),
       ((KChar 'j', Normal), move 1),
       ((KChar 'k', Normal), move (-1)),
       ((KChar 'n', Normal), add), ((KChar 'i', Normal), add),
@@ -44,7 +47,6 @@ inputs =
       ((KChar 'h', Normal), help), ((KChar '?', Normal), help)
     ]
     where
-
       clampI :: [a] -> Int -> Int
       clampI a b
         | b < 0 = 0
@@ -57,6 +59,12 @@ inputs =
         | index + i >= (length . lines) items || index + i < 0 = return ()
         | otherwise = modify . const . State Normal $ Data items (index + i)
       move _ (State _ _) = return ()
+
+      bottom :: State -> EventM WidgetID State ()
+      bottom (State s (Data items _)) = modify . const . State s . Data items $ length (lines items) - 1
+
+      top :: State -> EventM WidgetID State ()
+      top (State s (Data items _)) = modify . const . State s . Data items $ 0
 
       remove :: State -> EventM WidgetID State ()
       remove (State s (Data items index)) = modify . const . State s . Data (unlines lose) $ clampI lose index
