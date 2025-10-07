@@ -33,8 +33,6 @@ This will automatically compile it and it's dependancies, and add a symlink into
 
 ### Nix
 
-#### I haven't gotten around to the nix stuff, one minute
-
 In order to build with nix:
 
 ```bash
