@@ -92,6 +92,9 @@ add _ = return ()
 setStateMode :: Modes -> State -> EventM WidgetID State ()
 setStateMode m (State _ d) = modify . const $ State m d
 
+setStatePure :: Modes -> State -> State
+setStatePure m (State _ d) = State m d
+
 manageInsert :: Key -> State -> EventM WidgetID State ()
 manageInsert KBS (State _ (Data s i))
   | [_] <- last (lines s) = modify . const $ State Normal (Data (init s) i)
@@ -133,12 +136,14 @@ app =
         | KChar _ <- c -> manageInsert c st
       (state, c)
         | (Just f) <- spec -> f st
-        | (Just f) <- gen -> f st
+        | (Just f) <- gen -> f $ setStatePure Normal st
+        | (Just f) <- all -> f st
         | (KChar i) <- c -> setStateMode (Following i) st
         | otherwise -> return ()
        where
         spec = Map.lookup (k, state) inputs
-        gen = Map.lookup (k, Any) inputs
+        gen = Map.lookup (k, Normal) inputs
+        all = Map.lookup (k, Any) inputs
   handleEvent _ = return ()
 
   drawBorder = borderWithLabel (str "Todo items")
