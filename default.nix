@@ -1,21 +1,23 @@
-{pkgs ? import <nixpkgs> {}, ...}: let
-  f = {
-    mkDerivation,
-    base,
-    brick,
-    containers,
-    lib,
-    vty,
-    vty-unix,
-  }:
-    mkDerivation {
-      pname = "tuidui";
-      version = "0.1.0.0";
-      src = ./.;
-      isLibrary = false;
-      isExecutable = true;
-      executableHaskellDepends = [base brick containers vty vty-unix];
-      license = lib.licenses.bsd3;
-      mainProgram = "tuidui";
-    };
-in (pkgs.haskellPackages.callPackage f {})
+{
+  pkgs ? import <nixpkgs> { },
+}:
+let
+  lib = pkgs.lib;
+  hsPkgs = pkgs.haskellPackages;
+in
+hsPkgs.mkDerivation {
+  pname = "tuidui";
+  version = "0.1.0.0";
+  src = ./.;
+  isLibrary = false;
+  isExecutable = true;
+  executableHaskellDepends = with hsPkgs; [
+    base
+    brick
+    containers
+    vty
+    vty-unix
+  ];
+  license = lib.licenses.bsd3;
+  mainProgram = "tuidui";
+}
