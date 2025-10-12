@@ -22,13 +22,7 @@ let
       src = ./.;
       isLibrary = false;
       isExecutable = true;
-      executableHaskellDepends = [
-        base
-        brick
-        containers
-        vty
-        vty-unix
-      ];
+      executableHaskellDepends = [base brick containers vty vty-unix];
       license = lib.licenses.bsd3;
       mainProgram = "tuidui";
     };

@@ -50,10 +50,7 @@ inputs =
     , ((KEsc, Any), exitMode)
     , ((KChar 'g', Following 'g'), top)
     , ((KChar 'G', Normal), bottom)
-    , ((KChar 'j', Normal), move (-1))
-    , ((KChar 'k', Normal), move 1)
-    , ((KUp, Normal), move (-1))
-    , ((KDown, Normal), move (1))
+    , ((KChar 'j', Normal), move 1)
     , ((KChar 'k', Normal), move (-1))
     , ((KChar 'n', Normal), add)
     , ((KChar 'i', Normal), add)
@@ -101,6 +98,9 @@ add _ = return ()
 
 setStateMode :: Modes -> State -> EventM WidgetID State ()
 setStateMode m (State _ d) = modify . const $ State m d
+
+setStatePure :: Modes -> State -> State
+setStatePure m (State _ d) = State m d
 
 manageInsert :: Key -> State -> EventM WidgetID State ()
 manageInsert KBS (State _ (Data s i))
@@ -169,7 +169,7 @@ app =
     wid = vBox $ [if b == i then visible $ withAttr (attrName "selected") a else a | (a, b) <- zip lns [0 ..]]
     v = viewport (-1) Vertical wid
   drawContents (State Help x) = (centerLayer . border . vBox $ map str helpStrs) : drawContents (State Normal x)
-  drawContents (State Insert (Data items _)) = drawContents . State Normal . Data items $ -1
+  drawContents (State Insert (Data items _)) = drawContents . State Normal . Data (items ++ "█") $ -1
   drawContents (State _ d) = drawContents $ State Normal d
 
 startApp :: IO State
