@@ -51,6 +51,8 @@ inputs =
     , ((KChar 'g', Following 'g'), top)
     , ((KChar 'G', Normal), bottom)
     , ((KChar 'j', Normal), move 1)
+    , ((KUp, Normal), move (-1))
+    , ((KDown, Normal), move (1))
     , ((KChar 'k', Normal), move (-1))
     , ((KChar 'n', Normal), add)
     , ((KChar 'i', Normal), add)
