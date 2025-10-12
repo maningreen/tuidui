@@ -1,18 +1,21 @@
 {
-  pkgs ? import <nixpkgs> {},
+  nixpkgs ? import <nixpkgs> { },
   compiler ? "default",
   doBenchmark ? false,
-}: let
+}:
+let
+  inherit (nixpkgs) pkgs;
 
-  f = {
-    mkDerivation,
-    base,
-    brick,
-    containers,
-    lib,
-    vty,
-    vty-unix,
-  }:
+  f =
+    {
+      mkDerivation,
+      base,
+      brick,
+      containers,
+      lib,
+      vty,
+      vty-unix,
+    }:
     mkDerivation {
       pname = "tuidui";
       version = "0.1.0.0";
@@ -25,17 +28,10 @@
     };
 
   haskellPackages =
-    if compiler == "default"
-    then pkgs.haskellPackages
-    else pkgs.haskell.packages.${compiler};
+    if compiler == "default" then pkgs.haskellPackages else pkgs.haskell.packages.${compiler};
 
-  variant =
-    if doBenchmark
-    then pkgs.haskell.lib.doBenchmark
-    else pkgs.lib.id;
+  variant = if doBenchmark then pkgs.haskell.lib.doBenchmark else pkgs.lib.id;
 
-  drv = variant (haskellPackages.callPackage f {});
+  drv = variant (haskellPackages.callPackage f { });
 in
-  if pkgs.lib.inNixShell
-  then drv.env
-  else drv
+if pkgs.lib.inNixShell then drv.env else drv

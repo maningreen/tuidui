@@ -9,12 +9,19 @@ import GHC.IO.Handle (hGetContents, hPutStr)
 import GHC.IO.Handle.FD (openFile, withFile)
 import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
 import Graphics.Vty (Event (EvKey), Key (..), black, defAttr, white)
+import Data.List (uncons)
 
 type WidgetID = Int
 data Modes = Normal | Insert | Help | Following Char | Any
   deriving (Ord, Eq, Show)
 data Data = Data {_items :: String, _index :: WidgetID}
 data State = State {_state :: Modes, _data :: Data}
+
+normalPlus :: [Modes]
+normalPlus = [
+    Help,
+    Any
+  ] ++ map Following [' '..'z']
 
 todoPath :: FilePath
 todoPath = ".todo"
@@ -86,7 +93,7 @@ help s@(State Help _) = setStateMode Normal s
 help s@(State _ _) = setStateMode Help s
 
 add :: State -> EventM WidgetID State ()
-add (State Normal (Data items index)) = modify . const . State Insert $ Data items index
+add (State Normal (Data items index)) = modify . const $ State Insert $ Data items index
 add _ = return ()
 
 setStateMode :: Modes -> State -> EventM WidgetID State ()
@@ -97,9 +104,11 @@ setStatePure m (State _ d) = State m d
 
 manageInsert :: Key -> State -> EventM WidgetID State ()
 manageInsert KBS (State _ (Data s i))
-  | [_] <- last (lines s) = modify . const $ State Normal (Data (init s) i)
-  | otherwise = modify . const $ State Insert (Data (init s) i)
-manageInsert KEnter (State _ (Data s i)) = bottom $ State Normal (Data (s ++ "\n") i)
+  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
+  | otherwise = modify . const $ State Insert (Data (unlines $ init $ lines s) i)
+manageInsert KEnter (State _ (Data s i)) 
+  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
+  | otherwise = bottom $ State Normal (Data (s ++ "\n") i)
 manageInsert (KChar c) (State _ (Data s i)) = modify . const $ State Insert (Data (s ++ [c]) i)
 manageInsert _ _ = return ()
 
@@ -116,7 +125,7 @@ app =
   App
     { appDraw = draw
     , appHandleEvent = handleEvent
-    , appChooseCursor = const . const $ Nothing
+    , appChooseCursor = const $ fmap fst . uncons
     , appStartEvent = return ()
     , appAttrMap =
         const $
@@ -136,14 +145,12 @@ app =
         | KChar _ <- c -> manageInsert c st
       (state, c)
         | (Just f) <- spec -> f st
-        | (Just f) <- gen -> f $ setStatePure Normal st
-        | (Just f) <- all -> f st
+        | elem state normalPlus, (Just f) <- gen -> f (State Normal $ _data st)
         | (KChar i) <- c -> setStateMode (Following i) st
         | otherwise -> return ()
        where
         spec = Map.lookup (k, state) inputs
         gen = Map.lookup (k, Normal) inputs
-        all = Map.lookup (k, Any) inputs
   handleEvent _ = return ()
 
   drawBorder = borderWithLabel (str "Todo items")
