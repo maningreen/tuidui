@@ -104,10 +104,10 @@ setStateMode m (State _ d) = modify . const $ State m d
 
 manageInsert :: Key -> State -> EventM WidgetID State ()
 manageInsert KBS (State _ (Data s i))
-  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
-  | otherwise = modify . const $ State Insert (Data (unlines $ init $ lines s) i)
+  | '\n' <- last s = modify . const $ State Normal (Data s i)
+  | otherwise = modify . const $ State Insert (Data (unlines . init $ lines s) i)
 manageInsert KEnter (State _ (Data s i)) 
-  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
+  | '\n' <- last s = modify . const $ State Normal (Data s i)
   | otherwise = bottom $ State Normal (Data (s ++ "\n") i)
 manageInsert (KChar c) (State _ (Data s i)) = modify . const $ State Insert (Data (s ++ [c]) i)
 manageInsert _ _ = return ()
