@@ -1,27 +1,31 @@
 module Main where
 
 import Brick
-import Brick.Widgets.Border (border, borderWithLabel)
-import Brick.Widgets.Center (center, centerLayer, hCenter)
+import Brick.Widgets.Border (border, vBorder, hBorderWithLabel, hBorder)
+import Brick.Widgets.Center (centerLayer, hCenter)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.List (uncons)
 import qualified Data.Map as Map
-import GHC.IO.Handle (hGetContents, hPutStr)
+import GHC.IO.Handle (hGetContents, hPutChar)
 import GHC.IO.Handle.FD (openFile, withFile)
+import GHC.IO.Handle.Text (hPutStrLn)
 import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
 import Graphics.Vty (Event (EvKey), Key (..), black, defAttr, white)
-import Data.List (uncons)
+import Util (insertIndex, tailSafe, clampIndex, mapSnd, dropIndex, applyIndex, initSafe)
 
-type WidgetID = Int
-data Modes = Normal | Insert | Help | Following Char | Any
+data WidgetID = Doing Int | Todo Int
+  deriving (Eq, Ord, Show)
+data Mode = Normal | Insert | Help | Following Char | Any
   deriving (Ord, Eq, Show)
-data Data = Data {_items :: String, _index :: WidgetID}
-data State = State {_state :: Modes, _data :: Data}
+data Data = Data {_todo :: [String], _doing :: [String], _index :: WidgetID}
+data State = State {_state :: Mode, _data :: Data}
 
-normalPlus :: [Modes]
-normalPlus = [
-    Help,
-    Any
-  ] ++ map Following [' '..'z']
+normalPlus :: [Mode]
+normalPlus =
+  [ Help
+  , Any
+  ]
+    ++ map Following [' ' .. 'z']
 
 todoPath :: FilePath
 todoPath = ".todo"
@@ -35,90 +39,145 @@ helpStrs =
   , "Normal G:                        focus bottom"
   , "Normal j, Down:                  focus down"
   , "Normal k, Up:                    focus up"
+  , "Normal l, Left                   focus not done"
+  , "Normal h, Right                  focus doing"
   , "Normal n, i, a:                  add new item"
   , "Normal x, d, r:                  remove item"
-  , "Normal ?, h:                     show this help"
+  , "Normal L:                        append to 'doing' list"
+  , "Normal H:                        append to 'todo' list"
+  , "Normal ?:                        show this help"
   , "Insert <Enter>                   exit mode"
   ]
 
-inputs :: Map.Map (Key, Modes) (State -> EventM WidgetID State ())
+inputs :: Map.Map (Key, Mode) (State -> EventM WidgetID State ())
 inputs =
   Map.fromList
     [ ((KChar 'q', Normal), exitMode)
-    , ((KBS, Any), exitMode)
+    , ((KBS, Normal), exitMode)
     , ((KChar 'q', Help), exitMode)
     , ((KEsc, Any), exitMode)
-    , ((KChar 'g', Following 'g'), top)
-    , ((KChar 'G', Normal), bottom)
-    , ((KChar 'j', Normal), move 1)
-    , ((KChar 'k', Normal), move (-1))
-    , ((KChar 'n', Normal), add)
-    , ((KChar 'i', Normal), add)
-    , ((KChar 'x', Normal), remove)
-    , ((KChar 'd', Normal), remove)
-    , ((KChar 'r', Normal), remove)
-    , ((KChar 'h', Normal), help)
-    , ((KChar 'h', Help), help)
-    , ((KChar '?', Normal), help)
-    , ((KChar '?', Help), help)
+    , ((KChar 'g', Following 'g'), f . top)
+    , ((KChar 'G', Normal), f . bottom)
+    , ((KChar 'j', Normal), f . move 1)
+    , ((KChar 'k', Normal), f . move (-1))
+    , ((KUp, Normal), f . move (-1))
+    , ((KDown, Normal), f . move 1)
+    , ((KChar 'h', Normal), f . moveLeft)
+    , ((KChar 'l', Normal), f . moveRight)
+    , ((KChar 'n', Normal), f . add)
+    , ((KChar 'i', Normal), f . add)
+    , ((KChar 'x', Normal), f . remove)
+    , ((KChar 'd', Normal), f . remove)
+    , ((KChar 'r', Normal), f . remove)
+    , ((KChar 'L', Normal), f . prependDoing)
+    , ((KChar 'H', Normal), f . prependTodo)
+    , ((KChar 'h', Help), f . help)
+    , ((KChar '?', Normal), f . help)
+    , ((KChar '?', Help), f . help)
     ]
-clampI :: [a] -> Int -> Int
-clampI a b
-  | b < 0 = 0
-  | b > l = l
-  | otherwise = b
  where
-  l = length a - 1
+  f = modify . const
 
-move :: Int -> State -> EventM WidgetID State ()
-move i (State Normal (Data items index))
-  | index + i >= (length . lines) items || index + i < 0 = return ()
-  | otherwise = modify . const . State Normal $ Data items (index + i)
-move _ (State _ _) = return ()
+parseItems :: String -> ([String], [String])
+parseItems = mapSnd tailSafe . break (== "") . lines
 
-bottom :: State -> EventM WidgetID State ()
-bottom (State s (Data items _)) = modify . const . State s . Data items $ length (lines items) - 1
+prependDoing :: State -> State
+prependDoing s@(State m (Data t d i))
+  | Todo x <- i = (State m (Data (dropIndex t x) (t !! x : d) (Doing 0)))
+  | otherwise = s
 
-top :: State -> EventM WidgetID State ()
-top (State _ (Data items _)) = modify . const . State Normal . Data items $ 0
+prependTodo :: State -> State
+prependTodo s@(State m (Data t d i))
+  | Doing x <- i = State m (Data (d !! x : t) (dropIndex d x) (Todo 0))
+  | otherwise = s
 
-remove :: State -> EventM WidgetID State ()
-remove (State s (Data items index)) = modify . const . State s . Data (unlines lose) $ clampI lose index
+move :: Int -> State -> State
+move i (State s (Data todo doing index))
+  | Todo x <- index = State s $ Data todo doing (Todo $ clampIndex todo $ x + i)
+  | Doing x <- index = State s $ Data todo doing (Doing $ clampIndex doing $ x + i)
+
+bottom :: State -> State
+bottom (State s (Data todo doing index))
+  | Todo _ <- index = f . Todo $ length todo - 1
+  | Doing _ <- index = f . Doing $ length doing - 1
  where
-  lns = lines items
-  lose = take index lns ++ drop (index + 1) lns
+  f = State s . Data todo doing
 
-help :: State -> EventM WidgetID State ()
+top :: State -> State
+top (State s (Data todo doing index))
+  | Todo _ <- index = f $ Todo 0
+  | Doing _ <- index = f $ Doing 0
+ where
+  f = State s . Data todo doing
+
+moveLeft :: State -> State
+moveLeft s@(State _ (Data todo doing i))
+  | Doing x <- i = State Normal $ (Data todo doing $ Todo $ clampIndex todo x)
+  | otherwise = s
+
+moveRight :: State -> State
+moveRight (State _ (Data todo doing (Todo i))) = State Normal $ (Data todo doing $ Doing $ clampIndex doing i)
+moveRight s = s
+
+remove :: State -> State
+remove (State s (Data todo doing (Doing x))) = State s $ Data todo dropped $ Doing $ clampIndex dropped x
+ where
+  dropped = dropIndex doing x
+remove (State s (Data todo doing (Todo x))) = State s $ Data dropped doing $ Todo $ clampIndex dropped x
+ where
+  dropped = dropIndex todo x
+
+help :: State -> State
 help s@(State Help _) = setStateMode Normal s
 help s@(State _ _) = setStateMode Help s
 
-add :: State -> EventM WidgetID State ()
-add (State Normal (Data items index)) = modify . const $ State Insert $ Data items index
-add _ = return ()
+add :: State -> State
+add (State Normal (Data todo doing index))
+  | Todo _ <- index, [] <- todo = State Insert $ Data [""] doing $ Todo 0
+  | Doing _ <- index, [] <- doing = State Insert $ Data todo [""] $ Doing 0
+  | Todo x <- index = State Insert $ Data (insertIndex (x + 1) "" todo) doing . Todo $ (clampIndex todo x) + 1
+  | Doing x <- index = State Insert $ Data todo (insertIndex (x + 1) "" doing) . Doing $ (clampIndex doing x) + 1
+add s = s
 
-setStateMode :: Modes -> State -> EventM WidgetID State ()
-setStateMode m (State _ d) = modify . const $ State m d
+setStateMode :: Mode -> State -> State
+setStateMode m (State _ d) = State m d
 
-setStatePure :: Modes -> State -> State
+setStatePure :: Mode -> State -> State
 setStatePure m (State _ d) = State m d
 
-manageInsert :: Key -> State -> EventM WidgetID State ()
-manageInsert KBS (State _ (Data s i))
-  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
-  | otherwise = modify . const $ State Insert (Data (unlines $ init $ lines s) i)
-manageInsert KEnter (State _ (Data s i)) 
-  | '\n' <- last s = modify . const $ State Normal (Data (init s) i)
-  | otherwise = bottom $ State Normal (Data (s ++ "\n") i)
-manageInsert (KChar c) (State _ (Data s i)) = modify . const $ State Insert (Data (s ++ [c]) i)
-manageInsert _ _ = return ()
+handleInsert :: Key -> State -> EventM WidgetID State ()
 
-closeApp :: String -> IO ()
-closeApp s = withFile todoPath WriteMode (`hPutStr` s)
+handleInsert (KChar k) (State Insert (Data [] doing (Todo i))) = modify . const . State Insert . Data [[k]] doing $ Todo i
+handleInsert (KChar k) (State Insert (Data todo doing (Todo i))) = modify . const . State Insert . Data (applyIndex (++ [k]) todo i) doing $ Todo i
+
+handleInsert (KChar k) (State Insert (Data todo [] (Doing i))) = modify . const . State Insert . Data todo [[k]] $ Doing i
+handleInsert (KChar k) (State Insert (Data todo doing (Doing i))) = modify . const . State Insert . Data todo (applyIndex (++ [k]) doing $ i) $ Doing i
+
+handleInsert (KBS) (State Insert (Data todo doing (Doing i))) = modify . const . State Insert . Data todo (applyIndex (initSafe) doing $ i) $ Doing i
+handleInsert (KBS) (State Insert (Data todo doing (Todo i))) = modify . const . State Insert . Data (applyIndex (initSafe) todo i) doing $ Todo i
+
+handleInsert (KEnter) (State Insert (Data todo doing x))
+  | Doing i <- x, null (doing !! i) = modify . const $ State Normal (Data todo (dropIndex doing $ clampIndex doing i) x)
+  | Todo i <- x, null (todo !! i) = modify . const $ State Normal (Data (dropIndex todo i) doing x)
+  | otherwise = modify . const $ State Normal (Data todo doing x)
+
+handleInsert _ _ = return ()
+
+closeApp :: Data -> IO ()
+closeApp (Data todo doing _) =
+  withFile
+    todoPath
+    WriteMode
+    ( \hdl -> do
+        mapM_ (hPutStrLn hdl) todo
+        hPutChar hdl '\n'
+        mapM_ (hPutStrLn hdl) doing
+    )
 
 exitMode :: State -> EventM WidgetID State ()
-exitMode s@(State Insert _) = manageInsert KEnter s
-exitMode (State Normal (Data s _)) = liftIO (closeApp s) >> halt
-exitMode x = setStateMode Normal x
+exitMode s@(State Insert _) = modify . const $ setStateMode Normal s
+exitMode (State Normal theData) = liftIO (closeApp theData) >> halt
+exitMode x = modify . const $ setStateMode Normal x
 
 app :: App State () WidgetID
 app =
@@ -140,43 +199,60 @@ app =
     st <- get
     case (_state st, k) of
       (Insert, c)
-        | KBS <- c -> manageInsert c st
-        | KEnter <- c -> manageInsert c st
-        | KChar _ <- c -> manageInsert c st
+        | KBS <- c -> handleInsert c st
+        | KEnter <- c -> handleInsert c st
+        | KChar _ <- c -> handleInsert c st
+        | KEsc <- c -> modify . const $ setStateMode Normal st
       (state, c)
         | (Just f) <- spec -> f st
         | elem state normalPlus, (Just f) <- gen -> f (State Normal $ _data st)
-        | (KChar i) <- c -> setStateMode (Following i) st
+        | (KChar i) <- c -> modify . const $ setStateMode (Following i) st
         | otherwise -> return ()
        where
         spec = Map.lookup (k, state) inputs
         gen = Map.lookup (k, Normal) inputs
   handleEvent _ = return ()
 
-  drawBorder = borderWithLabel (str "Todo items")
-  drawContents :: State -> [Widget WidgetID]
+  draw s@(State n _) = str (show n) : drawState s
 
-  drawState :: Modes -> Widget WidgetID
-  drawState = str . show
+  generateWidgets :: Bool -> Data -> ([Widget WidgetID], [Widget WidgetID])
+  generateWidgets b d = (getTodoWids b d, getDoingWids b d)
 
-  draw s@(State n _) = drawState n : drawContents s
+  formatWidgets :: Mode -> ([Widget WidgetID], [Widget WidgetID]) -> Widget WidgetID
+  formatWidgets _ (todo, doing) = joinBorders $ vBorder <+> (hBorderWithLabel (str "Todo") <=> (hCenter (makeViewport Todo . vBox $ map hCenter todo))) <+> vBorder <+> ((hBorderWithLabel (str "Doing")) <=> (hCenter (makeViewport Doing . vBox $ map hCenter doing))) <+> vBorder <=> hBorder
 
-  drawContents (State Normal (Data c i))
-    | null $ lines c = return $ drawBorder . center $ str "No Items! (For help type ?)"
-    | otherwise = return . drawBorder . center $ v
+  makeViewport :: (Int -> WidgetID) -> Widget WidgetID -> Widget WidgetID
+  makeViewport f = viewport (f (-1)) Vertical
+
+  renderState :: State -> Widget WidgetID
+  renderState (State m d) = formatWidgets m $ generateWidgets True d
+
+  getTodoWids True (Data todo _ i) = [(if Todo index == i then visible . withAttr (attrName "selected") else id) . hCenter . str $ a | (a, index) <- zip todo [0 ..]]
+  getTodoWids False (Data todo _ _) = map (str . (\x -> if x == "" then " " else x)) todo
+  getDoingWids True (Data _ doing i) = [(if Doing index == i then visible . withAttr (attrName "selected") else id) . hCenter . str $ a | (a, index) <- zip doing [0 ..]]
+  getDoingWids False (Data _ doing _) = map (str . (\x -> if x == "" then " " else x)) doing
+
+  drawState :: State -> [Widget WidgetID]
+  drawState s@(State Normal (Data todo doing _))
+    | null doing && null todo = renderState s:[str "test"]
+    | otherwise = return $ renderState s
+  drawState (State Insert d) = return . formatWidgets Insert . applyCursor d $ generateWidgets False d
    where
-    lns = map (hCenter . str) $ lines c
-    wid = vBox $ [if b == i then visible $ withAttr (attrName "selected") a else a | (a, b) <- zip lns [0 ..]]
-    v = viewport (-1) Vertical wid
-  drawContents (State Help x) = (centerLayer . border . vBox $ map str helpStrs) : drawContents (State Normal x)
-  drawContents (State Insert (Data items _)) = drawContents . State Normal . Data (items ++ "█") $ -1
-  drawContents (State _ d) = drawContents $ State Normal d
+    applyCursorToWidget :: WidgetID -> Int -> Widget WidgetID -> Widget WidgetID
+    applyCursorToWidget idCode i wid = Brick.showCursor idCode (Location (i, 0)) wid
+
+    applyCursor :: Data -> ([Widget WidgetID], [Widget WidgetID]) -> ([Widget WidgetID], [Widget WidgetID])
+    applyCursor (Data todo _ (Todo i)) (a, b) = (applyIndex (applyCursorToWidget (Todo i) (length $ todo !! i)) a i, b)
+    applyCursor (Data _ doing (Doing i)) (a, b) = (a, applyIndex (applyCursorToWidget (Todo i) (length $ doing !! i)) b i)
+  drawState (State Help x) = (centerLayer . border . vBox $ map str helpStrs) : drawState (State Normal x)
+  drawState (State _ d) = drawState $ State Normal d
 
 startApp :: IO State
 startApp = do
   hdl <- openFile todoPath ReadWriteMode
   conts <- hGetContents hdl
-  defaultMain app $ State Normal $ Data conts 0
+  let (todo, doing) = parseItems conts
+  defaultMain app $ State Normal $ Data todo doing $ Todo 0
 
 main :: IO State
 main = startApp
