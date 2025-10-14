@@ -1,7 +1,7 @@
 module Main where
 
 import Brick
-import Brick.Widgets.Border (border, borderWithLabel, vBorder)
+import Brick.Widgets.Border (border, borderWithLabel, vBorder, hBorderWithLabel, hBorder)
 import Brick.Widgets.Center (center, centerLayer, hCenter)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.List (uncons)
@@ -133,8 +133,10 @@ help s@(State _ _) = setStateMode Help s
 
 add :: State -> State
 add (State Normal (Data todo doing index))
-  | Todo x <- index = State Insert $ Data (insertIndex (x + 1) "" todo) doing . Todo $ x + 1
-  | Doing x <- index = State Insert $ Data todo (insertIndex (x + 1) "" doing) . Doing $ x + 1
+  | Todo _ <- index, [] <- todo = State Insert $ Data [""] doing $ Todo 0
+  | Doing _ <- index, [] <- doing = State Insert $ Data todo [""] $ Doing 0
+  | Todo x <- index = State Insert $ Data (insertIndex (x + 1) "" todo) doing . Todo $ (clampIndex todo x) + 1
+  | Doing x <- index = State Insert $ Data todo (insertIndex (x + 1) "" doing) . Doing $ (clampIndex doing x) + 1
 add s = s
 
 setStateMode :: Mode -> State -> State
@@ -211,15 +213,13 @@ app =
         gen = Map.lookup (k, Normal) inputs
   handleEvent _ = return ()
 
-  drawBorder = borderWithLabel . str
-
   draw s@(State n _) = str (show n) : drawState s
 
   generateWidgets :: Bool -> Data -> ([Widget WidgetID], [Widget WidgetID])
   generateWidgets b d = (getTodoWids b d, getDoingWids b d)
 
   formatWidgets :: Mode -> ([Widget WidgetID], [Widget WidgetID]) -> Widget WidgetID
-  formatWidgets m (todo, doing) = borderWithLabel (str $ show m) $ hCenter (makeViewport Todo . vBox $ map hCenter todo) <+> vBorder <+> hCenter (makeViewport Doing . vBox $ map hCenter doing)
+  formatWidgets _ (todo, doing) = joinBorders $ vBorder <+> (hBorderWithLabel (str "Todo") <=> (hCenter (makeViewport Todo . vBox $ map hCenter todo))) <+> vBorder <+> ((hBorderWithLabel (str "Doing")) <=> (hCenter (makeViewport Doing . vBox $ map hCenter doing))) <+> vBorder <=> hBorder
 
   makeViewport :: (Int -> WidgetID) -> Widget WidgetID -> Widget WidgetID
   makeViewport f = viewport (f (-1)) Vertical
@@ -234,7 +234,7 @@ app =
 
   drawState :: State -> [Widget WidgetID]
   drawState s@(State Normal (Data todo doing _))
-    | null doing && null todo = return . drawBorder "Todo" . center $ str "No Items! (For help type ?)"
+    | null doing && null todo = renderState s:[str "test"]
     | otherwise = return $ renderState s
   drawState (State Insert d) = return . formatWidgets Insert . applyCursor d $ generateWidgets False d
    where
