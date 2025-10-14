@@ -6,14 +6,25 @@ Tuidui is a small per-directory todo app written in haskell with the bricks libr
 
 When running, you will see a menu, type `?` or `h` to see a list of available commands
 Tuidui is a modal editor, with vim-style bindings, modes are:
-Help, Insert, and Normal
+Help, Insert, Following, and Normal
+Some modes are considered "Normal+": when a mode is Normal+, it has all the binds Normal does and more, or some keys are rebound.
 
 When you quit the program all items will be writen to `./todo`, one line per item. Example:
 ```
 FizzBuzz
+
 Figure out what "Fizzing is"
 ```
 When you have too many items to do, and not enough of space to see it, you should probably get going! Or you could just select down with `j` and the view will scroll with you.
+
+You'll notice there's an empty line, this break signifies the break between "Todo" items and "Doing items".
+These are the windows, they're there to help you organize your items, and keep track on what you're working on.
+
+### Getting Started
+
+Press `i` for `i`nsert or `n` for `n`ew, type something in to create a new item.
+If you want to move the selected item to "Doing", press `L` to move it over.
+You can insert a new idem
 
 ## Build/Install Guide
 
