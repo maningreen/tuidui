@@ -35,6 +35,7 @@ initSafe [] = []
 initSafe x = init x
 
 clampIndex :: [a] -> Int -> Int
+clampIndex [] _ = 0
 clampIndex xs a
   | a < 0 = 0
   | a > l = l
