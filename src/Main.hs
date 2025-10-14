@@ -1,8 +1,8 @@
 module Main where
 
 import Brick
-import Brick.Widgets.Border (border, borderWithLabel, vBorder, hBorderWithLabel, hBorder)
-import Brick.Widgets.Center (center, centerLayer, hCenter)
+import Brick.Widgets.Border (border, vBorder, hBorderWithLabel, hBorder)
+import Brick.Widgets.Center (centerLayer, hCenter)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.List (uncons)
 import qualified Data.Map as Map
@@ -11,7 +11,7 @@ import GHC.IO.Handle.FD (openFile, withFile)
 import GHC.IO.Handle.Text (hPutStrLn)
 import GHC.IO.IOMode (IOMode (ReadWriteMode, WriteMode))
 import Graphics.Vty (Event (EvKey), Key (..), black, defAttr, white)
-import Util
+import Util (insertIndex, tailSafe, clampIndex, mapSnd, dropIndex, applyIndex, initSafe)
 
 data WidgetID = Doing Int | Todo Int
   deriving (Eq, Ord, Show)
@@ -239,7 +239,7 @@ app =
   drawState (State Insert d) = return . formatWidgets Insert . applyCursor d $ generateWidgets False d
    where
     applyCursorToWidget :: WidgetID -> Int -> Widget WidgetID -> Widget WidgetID
-    applyCursorToWidget id i wid = Brick.showCursor id (Location (i, 0)) wid
+    applyCursorToWidget idCode i wid = Brick.showCursor idCode (Location (i, 0)) wid
 
     applyCursor :: Data -> ([Widget WidgetID], [Widget WidgetID]) -> ([Widget WidgetID], [Widget WidgetID])
     applyCursor (Data todo _ (Todo i)) (a, b) = (applyIndex (applyCursorToWidget (Todo i) (length $ todo !! i)) a i, b)
@@ -252,8 +252,6 @@ startApp = do
   hdl <- openFile todoPath ReadWriteMode
   conts <- hGetContents hdl
   let (todo, doing) = parseItems conts
-  print todo
-  print doing
   defaultMain app $ State Normal $ Data todo doing $ Todo 0
 
 main :: IO State
