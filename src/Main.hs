@@ -64,6 +64,8 @@ inputs =
     , ((KDown, Normal), f . move 1)
     , ((KChar 'h', Normal), f . moveLeft)
     , ((KChar 'l', Normal), f . moveRight)
+    , ((KLeft, Normal), f . moveLeft)
+    , ((KRight, Normal), f . moveRight)
     , ((KChar 'n', Normal), f . add)
     , ((KChar 'i', Normal), f . add)
     , ((KChar 'x', Normal), f . remove)
